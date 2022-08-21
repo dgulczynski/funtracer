@@ -12,16 +12,23 @@ module Geometry
     rotateYaw,
     rotatePitch,
     rotatePitchYawRoll,
+    schurProduct,
+    fromTo,
+    extrude,
   )
 where
 
 import Data.List (find)
 import Linear
-  ( Epsilon (..),
+  ( Additive ((^+^)),
+    Epsilon (..),
     Metric (dot),
     Quaternion,
     V3 (..),
     axisAngle,
+    normalize,
+    (*^),
+    (^*),
   )
 
 type Vector3 = V3 Float
@@ -36,7 +43,7 @@ type Rotation = Quaternion Float
 
 data Ray = Ray {origin :: Position, direction :: Direction} deriving (Eq, Show)
 
-data Hit = Hit {hitColour :: Colour, hitTime :: Float} deriving (Eq, Show)
+data Hit = Hit {hitColour :: Colour, hitTime :: Float, hitPoint :: Position, hitNormal :: Direction} deriving (Eq, Show)
 
 data Shape = Sphere
   { sphereCenter :: Position,
@@ -47,8 +54,8 @@ data Shape = Sphere
 
 solveQuadratic :: (Ord a, Epsilon a, Floating a) => a -> a -> a -> [a]
 solveQuadratic a b c
-  | nearZero d = [- b / (2 * a)]
-  | d > 0 = [(- b - d') / (2 * a), (- b + d') / (2 * a)]
+  | nearZero d = [-b / (2 * a)]
+  | d > 0 = [(-b - d') / (2 * a), (-b + d') / (2 * a)]
   | otherwise = []
   where
     d = b * b - 4 * a * c
@@ -59,14 +66,25 @@ instance Ord Hit where
 
 intersect :: Shape -> Ray -> Maybe Hit
 intersect sphere ray =
-  hit <$> t
+  hit <$> intersectSphere (sphereCenter sphere) (sphereRadius sphere) ray
   where
-    hit time = Hit {hitTime = time, hitColour = sphereColour sphere}
-    t = find (> 0) (solveQuadratic a b c)
-    oc = origin ray - sphereCenter sphere
+    hit time =
+      Hit
+        { hitTime = time,
+          hitColour = sphereColour sphere,
+          hitPoint = rayHitPoint,
+          hitNormal = normalize $ rayHitPoint - sphereCenter sphere
+        }
+      where
+        rayHitPoint = origin ray ^+^ (direction ray ^* time)
+
+intersectSphere :: Position -> Float -> Ray -> Maybe Float
+intersectSphere center radius ray = find (> 0) (solveQuadratic a b c)
+  where
+    oc = origin ray - center
     a = direction ray `dot` direction ray
     b = 2 * oc `dot` direction ray
-    c = oc `dot` oc - sphereRadius sphere * sphereRadius sphere
+    c = oc `dot` oc - radius * radius
 
 rotatePitch :: Float -> Rotation
 rotatePitch = axisAngle (V3 1 0 0)
@@ -79,3 +97,12 @@ rotateRoll = axisAngle (V3 0 0 1)
 
 rotatePitchYawRoll :: Float -> Float -> Float -> Rotation
 rotatePitchYawRoll pitch yaw roll = rotatePitch pitch * rotateYaw yaw * rotateRoll roll
+
+schurProduct :: Num a => V3 a -> V3 a -> V3 a
+schurProduct (V3 x1 y1 z1) (V3 x2 y2 z2) = V3 (x1 * x2) (y1 * y2) (z1 * z2)
+
+fromTo :: Position -> Position -> Ray
+fromTo from to = Ray {origin = from, direction = normalize $ to - from}
+
+extrude :: Position -> Direction -> Position
+extrude point normal = point ^+^ (0.01 *^ normal)

@@ -2,8 +2,6 @@ module Utils (clamp, floatToByte, colourTo24BitRGBA) where
 
 import Data.Word (Word8)
 import Geometry (Colour, V3 (V3))
-import Linear.Epsilon ()
-import Linear.Quaternion ()
 
 clamp :: Ord a => (a, a) -> a -> a
 clamp (low, high) = max low . min high

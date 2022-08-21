@@ -8,6 +8,11 @@ and this project adheres to the
 
 ## Unreleased
 
+## 0.1.0.1
+### Added
+- Direct lighitng
+- Point lights
+
 ## 0.1.0.0
 ### Added
 - Sphere-ray intersection
