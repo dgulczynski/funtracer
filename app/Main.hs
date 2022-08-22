@@ -9,5 +9,5 @@ main = display window white render
     render = renderScene (screenWidth, screenHeight)
     window = InWindow windowName (screenWidth, screenHeight) (screenWidth, screenHeight)
     windowName = "funtracer"
-    screenWidth = 640
-    screenHeight = 360
+    screenWidth = 512
+    screenHeight = 512

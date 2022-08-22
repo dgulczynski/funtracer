@@ -10,6 +10,7 @@ and this project adheres to the
 
 ## 0.1.0.1
 ### Added
+- Triangle-ray intersection
 - Direct lighitng
 - Point lights
 

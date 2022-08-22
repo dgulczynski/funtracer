@@ -34,7 +34,7 @@ import Linear
   )
 import Utils (colourTo24BitRGBA)
 
-data Light = PointLight {lightPosition :: Position, lightIntensity :: Float, lightColour :: Colour}
+data Light = PointLight {lightColour :: Colour, lightIntensity :: Float, lightPosition :: Position}
 
 raysOfScreen :: Position -> Rotation -> Float -> Float -> (Int, Int) -> [[Ray]]
 raysOfScreen cameraPosition rotation screenDistance vfov (width, height) =
@@ -58,7 +58,7 @@ lightAtPoint (PointLight {lightIntensity = intensity, lightColour = colour, ligh
     illumination = costheta * intensity / (r * r)
     costheta = max 0 $ normal `dot` pl
     pl = normalize $ position - point
-    r = distance position point
+    r = position `distance` point
 
 intersectScene :: [Shape] -> Ray -> Maybe Hit
 intersectScene objects ray =
@@ -67,26 +67,42 @@ intersectScene objects ray =
     hits -> Just $ minimum hits
 
 trace :: [Shape] -> [Light] -> Ray -> Colour
-trace objects lights ray = maybe zero pixelColor $ intersectScene objects ray
+trace scene lights ray = maybe zero pixelColor $ intersectScene scene ray
   where
     pixelColor (Hit {hitColour = c, hitPoint = p, hitNormal = n}) = c `schurProduct` sumV (map (illuminate p n) lights)
     illuminate point normal light =
-      case intersectScene objects (extrude point normal `fromTo` lightPosition light) of
-        Nothing -> lightAtPoint light point normal
-        Just _ -> zero
+      case intersectScene scene ((point `extrude` normal) `fromTo` lightPos) of
+        Nothing -> illumination
+        Just (Hit {hitTime = t}) -> if t < lightDistance then zero else illumination
+      where
+        illumination = lightAtPoint light point normal
+        lightDistance = point `distance` lightPos
+        lightPos = lightPosition light
 
 renderScene :: (Int, Int) -> Picture
 renderScene (screenWidth, screenHeight) = bitmapOfByteString screenWidth screenHeight (BitmapFormat TopToBottom PxRGBA) bitmapData True
   where
     bitmapData = pack $ concatMap (colourTo24BitRGBA . trace scene lights) $ concat rays
-    rays = raysOfScreen (V3 0 1.75 0) (rotatePitchYawRoll 0 0 0) 1 60 (screenWidth, screenHeight)
+    rays = raysOfScreen (V3 0 0 (-8)) (rotatePitchYawRoll 0 0 0) 1 45 (screenWidth, screenHeight)
     scene =
-      [ Sphere {sphereCenter = V3 1 1.5 3, sphereRadius = 1, sphereColour = V3 0.8 0.6 0.2},
-        Sphere {sphereCenter = V3 (-1) 2 3, sphereRadius = 1, sphereColour = V3 0.7 0.6 0.1},
-        Sphere {sphereCenter = V3 0 (-10000) 0, sphereRadius = 10000, sphereColour = V3 0.5 0.5 0.5}
+      [ Sphere white (V3 1 (-1.3) 0.2) 0.7,
+        Sphere white (V3 (-0.9) (-1) (-0.4)) 1,
+        Triangle white (V3 (-2) (-2) (-2)) (V3 (-2) (-2) 2) (V3 2 (-2) (-2)), -- floor
+        Triangle white (V3 2 (-2) (-2)) (V3 (-2) (-2) 2) (V3 2 (-2) 2), --       floor
+        Triangle white (V3 (-2) 2 2) (V3 (-2) 2 (-2)) (V3 2 2 (-2)), -- ceiling
+        Triangle white (V3 (-2) 2 2) (V3 2 2 (-2)) (V3 2 2 2), --       ceiling
+        Triangle green (V3 2 2 (-2)) (V3 2 (-2) (-2)) (V3 2 2 2), -- left wall
+        Triangle green (V3 2 (-2) (-2)) (V3 2 (-2) 2) (V3 2 2 2), -- left wall
+        Triangle red (V3 (-2) (-2) 2) (V3 (-2) (-2) (-2)) (V3 (-2) 2 2), -- right wall
+        Triangle red (V3 (-2) (-2) (-2)) (V3 (-2) 2 (-2)) (V3 (-2) 2 2), -- right wall
+        Triangle blue (V3 2 (-2) 2) (V3 (-2) (-2) 2) (V3 2 2 2), --  back wall
+        Triangle blue (V3 2 2 2) (V3 (-2) (-2) 2) (V3 (-2) 2 2.1) -- back wall
       ]
     lights =
-      [ PointLight (V3 5 5 3) 10 (V3 1 0.1 0.5),
-        PointLight (V3 (-3) 4 2) 15 (V3 0.3 0.3 1),
-        PointLight (V3 0 3 (-10)) 25 (V3 1 0.5 1)
+      [ PointLight white 5 (V3 0 1.5 0),
+        PointLight white 25 (V3 0 1.9 (-10))
       ]
+    white = V3 1 1 1
+    red = V3 0.9 0.2 0.2
+    green = V3 0.2 0.9 0.2
+    blue = V3 0.2 0.2 0.9
