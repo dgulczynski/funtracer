@@ -1,6 +1,5 @@
 module Tracer (renderScene) where
 
-import Data.ByteString (pack)
 import Data.Maybe (mapMaybe)
 import Geometry
   ( Colour,
@@ -8,21 +7,12 @@ import Geometry
     Hit (..),
     Position,
     Ray (..),
-    Rotation,
-    Shape (..),
+    Shape,
     V3 (V3),
     extrude,
     fromTo,
     intersect,
-    rotatePitchYawRoll,
     schurProduct,
-  )
-import Graphics.Gloss
-  ( BitmapFormat (BitmapFormat),
-    Picture,
-    PixelFormat (PxRGBA),
-    RowOrder (TopToBottom),
-    bitmapOfByteString,
   )
 import Linear
   ( Additive (zero),
@@ -32,19 +22,23 @@ import Linear
     sumV,
     (^*),
   )
-import Utils (colourTo24BitRGBA)
+import Scene
+  ( Camera (..),
+    Light (..),
+    Scene (..),
+  )
+import Utils (maybeMinimum, (<$$>))
 
-data Light = PointLight {lightColour :: Colour, lightIntensity :: Float, lightPosition :: Position}
-
-raysOfScreen :: Position -> Rotation -> Float -> Float -> (Int, Int) -> [[Ray]]
-raysOfScreen cameraPosition rotation screenDistance vfov (width, height) =
+raysOfScreen :: Camera -> (Int, Int) -> [[Ray]]
+raysOfScreen camera (width, height) =
   [[rayAtPixel x y | x <- [1 .. width]] | y <- [1 .. height]]
   where
-    transform = rotate rotation
+    transform = rotate (cameraRotation camera)
     ratio = fromIntegral width / fromIntegral height
-    screenHeight = screenDistance * 2 * tan (vfov * (pi / 360))
+    screenHeight = screenDistance * 2 * tan (cameraVFov camera * (pi / 360))
     screenWidth = ratio * screenHeight
-    rayAtPixel x y = Ray {origin = cameraPosition, direction = normalize delta}
+    screenDistance = cameraDistance camera
+    rayAtPixel x y = Ray {origin = cameraPosition camera, direction = normalize delta}
       where
         pixelIndexToOffset i range = fromIntegral i / fromIntegral range
         dx = (pixelIndexToOffset x width - 0.5) * screenWidth
@@ -61,48 +55,27 @@ lightAtPoint (PointLight {lightIntensity = intensity, lightColour = colour, ligh
     r = position `distance` point
 
 intersectScene :: [Shape] -> Ray -> Maybe Hit
-intersectScene objects ray =
-  case mapMaybe (`intersect` ray) objects of
-    [] -> Nothing
-    hits -> Just $ minimum hits
+intersectScene sceneGeometry ray = maybeMinimum $ mapMaybe (`intersect` ray) sceneGeometry
 
-trace :: [Shape] -> [Light] -> Ray -> Colour
-trace scene lights ray = maybe zero pixelColor $ intersectScene scene ray
+traceShadowRay :: [Shape] -> Light -> Ray -> Bool
+traceShadowRay scene light shadowRay =
+  maybe False hitTest (intersectScene scene shadowRay)
   where
-    pixelColor (Hit {hitColour = c, hitPoint = p, hitNormal = n}) = c `schurProduct` sumV (map (illuminate p n) lights)
-    illuminate point normal light =
-      case intersectScene scene ((point `extrude` normal) `fromTo` lightPos) of
-        Nothing -> illumination
-        Just (Hit {hitTime = t}) -> if t < lightDistance then zero else illumination
+    hitTest (Hit {hitTime = t}) = t < lightDistance
+    lightDistance = origin shadowRay `distance` lightPosition light
+
+traceRay :: Scene -> Ray -> Colour
+traceRay (Scene {geometry = sceneGeometry, lights = sceneLights}) ray =
+  maybe zero pixelColor $ intersectScene sceneGeometry ray
+  where
+    pixelColor (Hit {hitColour = c, hitPoint = p, hitNormal = n}) = c `schurProduct` sumV (map (illuminate p n) sceneLights)
+    illuminate point normal light = if traceShadowRay sceneGeometry light shadowRay then zero else illumination
       where
+        shadowRay = (point `extrude` normal) `fromTo` lightPos
         illumination = lightAtPoint light point normal
-        lightDistance = point `distance` lightPos
         lightPos = lightPosition light
 
-renderScene :: (Int, Int) -> Picture
-renderScene (screenWidth, screenHeight) = bitmapOfByteString screenWidth screenHeight (BitmapFormat TopToBottom PxRGBA) bitmapData True
+renderScene :: Scene -> Camera -> (Int, Int) -> [[Colour]]
+renderScene scene camera (screenWidth, screenHeight) = traceRay scene <$$> rays
   where
-    bitmapData = pack $ concatMap (colourTo24BitRGBA . trace scene lights) $ concat rays
-    rays = raysOfScreen (V3 0 0 (-8)) (rotatePitchYawRoll 0 0 0) 1 45 (screenWidth, screenHeight)
-    scene =
-      [ Sphere white (V3 1 (-1.3) 0.2) 0.7,
-        Sphere white (V3 (-0.9) (-1) (-0.4)) 1,
-        Triangle white (V3 (-2) (-2) (-2)) (V3 (-2) (-2) 2) (V3 2 (-2) (-2)), -- floor
-        Triangle white (V3 2 (-2) (-2)) (V3 (-2) (-2) 2) (V3 2 (-2) 2), --       floor
-        Triangle white (V3 (-2) 2 2) (V3 (-2) 2 (-2)) (V3 2 2 (-2)), -- ceiling
-        Triangle white (V3 (-2) 2 2) (V3 2 2 (-2)) (V3 2 2 2), --       ceiling
-        Triangle green (V3 2 2 (-2)) (V3 2 (-2) (-2)) (V3 2 2 2), -- left wall
-        Triangle green (V3 2 (-2) (-2)) (V3 2 (-2) 2) (V3 2 2 2), -- left wall
-        Triangle red (V3 (-2) (-2) 2) (V3 (-2) (-2) (-2)) (V3 (-2) 2 2), -- right wall
-        Triangle red (V3 (-2) (-2) (-2)) (V3 (-2) 2 (-2)) (V3 (-2) 2 2), -- right wall
-        Triangle blue (V3 2 (-2) 2) (V3 (-2) (-2) 2) (V3 2 2 2), --  back wall
-        Triangle blue (V3 2 2 2) (V3 (-2) (-2) 2) (V3 (-2) 2 2.1) -- back wall
-      ]
-    lights =
-      [ PointLight white 5 (V3 0 1.5 0),
-        PointLight white 25 (V3 0 1.9 (-10))
-      ]
-    white = V3 1 1 1
-    red = V3 0.9 0.2 0.2
-    green = V3 0.2 0.9 0.2
-    blue = V3 0.2 0.2 0.9
+    rays = raysOfScreen camera (screenWidth, screenHeight)

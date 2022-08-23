@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Geometry
+      Scene
       Tracer
       Utils
   other-modules:

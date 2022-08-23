@@ -42,26 +42,26 @@ type Direction = Vector3
 
 type Rotation = Quaternion Float
 
-data Ray = Ray {origin :: Position, direction :: Direction} deriving (Eq, Show)
-
-data Hit = Hit {hitColour :: Colour, hitTime :: Float, hitPoint :: Position, hitNormal :: Direction} deriving (Eq, Show)
-
 data Shape
   = Sphere Colour Position Float
   | Triangle Colour Position Position Position
   deriving (Show)
 
+data Ray = Ray {origin :: Position, direction :: Direction} deriving (Eq, Show)
+
+data Hit = Hit {hitColour :: Colour, hitTime :: Float, hitPoint :: Position, hitNormal :: Direction} deriving (Eq, Show)
+
+instance Ord Hit where
+  (Hit {hitTime = t1}) `compare` (Hit {hitTime = t2}) = t1 `compare` t2
+
 solveQuadratic :: (Ord a, Epsilon a, Floating a) => a -> a -> a -> [a]
 solveQuadratic a b c
-  | nearZero d = [-b / (2 * a)]
-  | d > 0 = [(-b - d') / (2 * a), (-b + d') / (2 * a)]
+  | nearZero d = [- b / (2 * a)]
+  | d > 0 = [(- b - d') / (2 * a), (- b + d') / (2 * a)]
   | otherwise = []
   where
     d = b * b - 4 * a * c
     d' = sqrt d
-
-instance Ord Hit where
-  (Hit {hitTime = t1}) `compare` (Hit {hitTime = t2}) = t1 `compare` t2
 
 toHit :: Colour -> (Position -> Direction) -> Ray -> Float -> Hit
 toHit colour pointToNormal ray time =
