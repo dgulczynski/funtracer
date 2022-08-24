@@ -15,6 +15,7 @@ module Geometry
     schurProduct,
     fromTo,
     extrude,
+    reflect,
   )
 where
 
@@ -56,8 +57,8 @@ instance Ord Hit where
 
 solveQuadratic :: (Ord a, Epsilon a, Floating a) => a -> a -> a -> [a]
 solveQuadratic a b c
-  | nearZero d = [- b / (2 * a)]
-  | d > 0 = [(- b - d') / (2 * a), (- b + d') / (2 * a)]
+  | nearZero d = [-b / (2 * a)]
+  | d > 0 = [(-b - d') / (2 * a), (-b + d') / (2 * a)]
   | otherwise = []
   where
     d = b * b - 4 * a * c
@@ -131,3 +132,6 @@ fromTo from to = Ray {origin = from, direction = normalize $ to ^-^ from}
 
 extrude :: Position -> Direction -> Position
 extrude point dir = point ^+^ (0.0001 *^ dir)
+
+reflect :: Direction -> Direction -> Direction
+reflect normal ray = ray ^-^ (2 * normal `dot` ray) *^ normal

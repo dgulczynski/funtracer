@@ -7,11 +7,11 @@ import Geometry
     Hit (..),
     Position,
     Ray (..),
-    Shape,
     V3 (V3),
     extrude,
     fromTo,
     intersect,
+    reflect,
     schurProduct,
   )
 import Linear
@@ -20,6 +20,7 @@ import Linear
     normalize,
     rotate,
     sumV,
+    (*^),
     (^*),
   )
 import Scene
@@ -54,28 +55,33 @@ lightAtPoint (PointLight {lightIntensity = intensity, lightColour = colour, ligh
     pl = normalize $ position - point
     r = position `distance` point
 
-intersectScene :: [Shape] -> Ray -> Maybe Hit
-intersectScene sceneGeometry ray = maybeMinimum $ mapMaybe (`intersect` ray) sceneGeometry
+intersectScene :: Scene -> Ray -> Maybe Hit
+intersectScene scene ray = maybeMinimum $ mapMaybe (`intersect` ray) (geometry scene)
 
-traceShadowRay :: [Shape] -> Light -> Ray -> Bool
+traceShadowRay :: Scene -> Light -> Ray -> Bool
 traceShadowRay scene light shadowRay =
   maybe False hitTest (intersectScene scene shadowRay)
   where
     hitTest (Hit {hitTime = t}) = t < lightDistance
     lightDistance = origin shadowRay `distance` lightPosition light
 
-traceRay :: Scene -> Ray -> Colour
-traceRay (Scene {geometry = sceneGeometry, lights = sceneLights}) ray =
-  maybe zero pixelColor $ intersectScene sceneGeometry ray
+traceRay :: Int -> Scene -> Ray -> Colour
+traceRay bounces scene ray
+  | bounces < 0 = zero
+  | otherwise = maybe zero pixelColor $ intersectScene scene ray
   where
-    pixelColor (Hit {hitColour = c, hitPoint = p, hitNormal = n}) = c `schurProduct` sumV (map (illuminate p n) sceneLights)
-    illuminate point normal light = if traceShadowRay sceneGeometry light shadowRay then zero else illumination
+    pixelColor hit = hitColor hit + traceSecondaryRay 0.3 hit
+    hitColor (Hit {hitColour = c, hitPoint = p, hitNormal = n}) = c `schurProduct` sumV (map (illuminate p n) (lights scene))
+    traceSecondaryRay multiplier (Hit {hitPoint = p, hitNormal = n}) = multiplier *^ traceRay (bounces - 1) scene secondaryRay
+      where
+        secondaryRay = Ray {origin = extrude p n, direction = reflect n (direction ray)}
+    illuminate point normal light = if traceShadowRay scene light shadowRay then zero else illumination
       where
         shadowRay = (point `extrude` normal) `fromTo` lightPos
         illumination = lightAtPoint light point normal
         lightPos = lightPosition light
 
 renderScene :: Scene -> Camera -> (Int, Int) -> [[Colour]]
-renderScene scene camera (screenWidth, screenHeight) = traceRay scene <$$> rays
+renderScene scene camera (screenWidth, screenHeight) = traceRay 3 scene <$$> rays
   where
     rays = raysOfScreen camera (screenWidth, screenHeight)

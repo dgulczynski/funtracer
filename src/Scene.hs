@@ -33,7 +33,7 @@ defaultScene =
           Triangle blue (V3 2 2 2) (V3 (-2) (-2) 2) (V3 (-2) 2 2.1) -- back wall
         ],
       lights =
-        [ PointLight white 5 (V3 0 1.5 0),
+        [ PointLight white 5 (V3 0 1.7 (-0.5)),
           PointLight white 25 (V3 0 1.9 (-10))
         ]
     }
